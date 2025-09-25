@@ -192,43 +192,30 @@ class AI_Community_Plugin {
     }
     
     private function init_components() {
-        // Define component dependencies
-        $components = array(
-            'database' => array('class' => 'AI_Community_Database', 'deps' => array()),
-            'settings' => array('class' => 'AI_Community_Settings', 'deps' => array()),
-            'openrouter_api' => array('class' => 'AI_Community_OpenRouter_API', 'deps' => array('settings')),
-            'ai_generator' => array('class' => 'AI_Community_AI_Generator', 'deps' => array('settings', 'database', 'openrouter_api')),
-            'rest_api' => array('class' => 'AI_Community_REST_API', 'deps' => array('database', 'settings')),
-        );
-        
-        // Add context-specific components
-        if (is_admin()) {
-            $components['admin'] = array('class' => 'AI_Community_Admin', 'deps' => array('database', 'settings'));
-        } else {
-            $components['frontend'] = array('class' => 'AI_Community_Frontend', 'deps' => array('settings'));
-        }
-        
-        return $this->initialize_components($components);
-    }
-
-    private function initialize_components($components) {
-        $initialized = array();
-        $failed = array();
-        
-        foreach ($components as $name => $config) {
-            if ($this->initialize_component($name, $config, $initialized)) {
-                $initialized[] = $name;
+        try {
+            // Initialize in dependency order
+            $this->database = new AI_Community_Database();
+            $this->settings = new AI_Community_Settings();
+            $this->openrouter_api = new AI_Community_OpenRouter_API();
+            $this->ai_generator = new AI_Community_AI_Generator();
+            $this->rest_api = new AI_Community_REST_API();
+            
+            // Context-specific components
+            if (is_admin()) {
+                $this->admin = new AI_Community_Admin();
             } else {
-                $failed[] = $name;
+                $this->frontend = new AI_Community_Frontend();
             }
-        }
-        
-        if (!empty($failed)) {
-            error_log('AI Community: Failed to initialize components: ' . implode(', ', $failed));
+            
+            return true;
+            
+        } catch (Exception $e) {
+            error_log('AI Community: Failed to initialize components - ' . $e->getMessage());
+            add_action('admin_notices', function() use ($e) {
+                echo '<div class="notice notice-error"><p>AI Community Plugin Error: ' . esc_html($e->getMessage()) . '</p></div>';
+            });
             return false;
         }
-        
-        return true;
     }
     
     /**
@@ -245,21 +232,19 @@ class AI_Community_Plugin {
                 );
             }
             
-            // Initialize components manually for activation since they're not loaded yet
-            if (!class_exists('AI_Community_Database')) {
-                wp_die(
-                    'AI Community Database class not found. Plugin files may be corrupted.',
-                    'Plugin Activation Error',
-                    array('back_link' => true)
-                );
-            }
-            
-            if (!class_exists('AI_Community_Settings')) {
-                wp_die(
-                    'AI Community Settings class not found. Plugin files may be corrupted.',
-                    'Plugin Activation Error',
-                    array('back_link' => true)
-                );
+            // Load dependencies first
+            $this->load_dependencies();
+
+            // Check required classes exist
+            $required_classes = ['AI_Community_Database', 'AI_Community_Settings'];
+            foreach ($required_classes as $class) {
+                if (!class_exists($class)) {
+                    wp_die(
+                        "AI Community: Required class {$class} not found. Plugin files may be corrupted.",
+                        'Plugin Activation Error',
+                        array('back_link' => true)
+                    );
+                }
             }
             
             // Create database instance for activation
