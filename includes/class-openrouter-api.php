@@ -25,14 +25,21 @@ class AI_Community_OpenRouter_API {
      * Constructor
      */
     public function __construct() {
-        $this->settings = new AI_Community_Settings();
+        $this->settings = null;
+    }
+
+    private function get_settings() {
+        if (!$this->settings) {
+            $this->settings = new AI_Community_Settings();
+        }
+        return $this->settings;
     }
     
     /**
      * Generate content using OpenRouter API
      */
     public function generate_content($prompt, $options = array()) {
-        $api_key = $this->settings->get('openrouter_api_key');
+        $api_key = $this->get_settings()->get('openrouter_api_key');
         
         if (empty($api_key)) {
             return new WP_Error('no_api_key', __('OpenRouter API key is required', 'ai-community'));
@@ -45,7 +52,7 @@ class AI_Community_OpenRouter_API {
         }
         
         $defaults = array(
-            'model' => $this->settings->get('ai_model', 'openai/gpt-3.5-turbo'),
+            'model' => $this->get_settings()->get('ai_model', 'openai/gpt-3.5-turbo'),
             'max_tokens' => 1500,
             'temperature' => 0.8,
             'top_p' => 0.9,
@@ -93,7 +100,7 @@ class AI_Community_OpenRouter_API {
         );
         
         // Log request if debug mode is enabled
-        if ($this->settings->get('log_ai_requests')) {
+        if ($this->get_settings()->get('log_ai_requests')) {
             $this->log_request($body, 'generate_content');
         }
         
@@ -127,7 +134,7 @@ class AI_Community_OpenRouter_API {
         $content = $data['choices'][0]['message']['content'];
         
         // Log successful response
-        if ($this->settings->get('log_ai_requests')) {
+        if ($this->get_settings()->get('log_ai_requests')) {
             $this->log_response($data, 'generate_content');
         }
         
@@ -161,7 +168,7 @@ class AI_Community_OpenRouter_API {
      * Generate posts from website content
      */
     public function generate_posts_from_content($source_content, $count = 5) {
-        $topics = implode(', ', $this->settings->get('post_topics', array('development', 'ai', 'community')));
+        $topics = implode(', ', $this->get_settings()->get('post_topics', array('development', 'ai', 'community')));
         $website_name = get_bloginfo('name');
         
         $prompt = "Based on the following recent content from {$website_name}, create {$count} engaging community discussion posts about topics like: {$topics}.\n\n";
@@ -470,7 +477,7 @@ class AI_Community_OpenRouter_API {
      * Validate content quality
      */
     private function validate_content_quality($content) {
-        $threshold = $this->settings->get('ai_content_quality_threshold', 0.7);
+        $threshold = $this->get_settings()->get('ai_content_quality_threshold', 0.7);
         $content = trim($content);
         
         // Check minimum length
@@ -560,7 +567,7 @@ class AI_Community_OpenRouter_API {
      * Log API request
      */
     private function log_request($request_data, $context = '') {
-        if (!$this->settings->get('log_ai_requests')) {
+        if (!$this->get_settings()->get('log_ai_requests')) {
             return;
         }
         
@@ -581,7 +588,7 @@ class AI_Community_OpenRouter_API {
      * Log API response
      */
     private function log_response($response_data, $context = '') {
-        if (!$this->settings->get('log_ai_requests')) {
+        if (!$this->get_settings()->get('log_ai_requests')) {
             return;
         }
         
@@ -688,7 +695,7 @@ class AI_Community_OpenRouter_API {
             'anthropic/claude-2' => 0.01
         );
         
-        $model = $this->settings->get('ai_model', 'openai/gpt-3.5-turbo');
+        $model = $this->get_settings()->get('ai_model', 'openai/gpt-3.5-turbo');
         $cost_per_1k = $model_costs[$model] ?? 0.002;
         $total_tokens = ($usage_data['prompt_tokens'] ?? 0) + ($usage_data['completion_tokens'] ?? 0);
         $stats[$today]['cost_estimate'] += ($total_tokens / 1000) * $cost_per_1k;
@@ -722,7 +729,7 @@ class AI_Community_OpenRouter_API {
      * Check API rate limits
      */
     public function check_rate_limits() {
-        $max_per_hour = $this->settings->get('max_ai_posts_per_hour', 10);
+        $max_per_hour = $this->get_settings()->get('max_ai_posts_per_hour', 10);
         $current_hour = date('Y-m-d H:00:00');
         
         $recent_requests = get_transient('ai_community_api_requests_' . $current_hour);
@@ -747,7 +754,7 @@ class AI_Community_OpenRouter_API {
      * Get cached response
      */
     private function get_cached_response($cache_key) {
-        if (!$this->settings->get('cache_enabled')) {
+        if (!$this->get_settings()->get('cache_enabled')) {
             return false;
         }
         
@@ -758,11 +765,11 @@ class AI_Community_OpenRouter_API {
      * Cache response
      */
     private function cache_response($cache_key, $response, $duration = null) {
-        if (!$this->settings->get('cache_enabled')) {
+        if (!$this->get_settings()->get('cache_enabled')) {
             return;
         }
         
-        $duration = $duration ?? $this->settings->get('cache_duration', 3600);
+        $duration = $duration ?? $this->get_settings()->get('cache_duration', 3600);
         set_transient('ai_community_api_' . md5($cache_key), $response, $duration);
     }
     
@@ -980,7 +987,7 @@ class AI_Community_OpenRouter_API {
     private function get_rate_limit_status() {
         $current_hour = date('Y-m-d H:00:00');
         $requests_this_hour = get_transient('ai_community_api_requests_' . $current_hour) ?: 0;
-        $max_per_hour = $this->settings->get('max_ai_posts_per_hour', 10);
+        $max_per_hour = $this->get_settings()->get('max_ai_posts_per_hour', 10);
         
         return array(
             'requests_this_hour' => $requests_this_hour,
@@ -1028,10 +1035,10 @@ class AI_Community_OpenRouter_API {
             'errors' => get_option('ai_community_api_errors', array()),
             'stats' => get_option('ai_community_api_stats', array()),
             'settings' => array(
-                'model' => $this->settings->get('ai_model'),
-                'enabled' => $this->settings->get('ai_generation_enabled'),
-                'posts_per_day' => $this->settings->get('posts_per_day'),
-                'web_search_enabled' => $this->settings->get('web_search_enabled')
+                'model' => $this->get_settings()->get('ai_model'),
+                'enabled' => $this->get_settings()->get('ai_generation_enabled'),
+                'posts_per_day' => $this->get_settings()->get('posts_per_day'),
+                'web_search_enabled' => $this->get_settings()->get('web_search_enabled')
             ),
             'export_time' => current_time('mysql'),
             'plugin_version' => AI_COMMUNITY_VERSION
@@ -1075,7 +1082,7 @@ class AI_Community_OpenRouter_API {
      * Generate content with web search enhancement
      */
     public function generate_content_with_web_search($prompt, $search_queries = array(), $options = array()) {
-        if (!$this->settings->get('web_search_enabled') || empty($search_queries)) {
+        if (!$this->get_settings()->get('web_search_enabled') || empty($search_queries)) {
             return $this->generate_content($prompt, $options);
         }
 

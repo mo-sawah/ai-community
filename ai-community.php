@@ -217,8 +217,7 @@ class AI_Community_Plugin {
             if ($this->database && method_exists($this->database, 'create_tables')) {
                 $this->database->create_tables();
             }
-            
-            // Set default settings if settings class exists
+
             if ($this->settings && method_exists($this->settings, 'set_default_options')) {
                 $this->settings->set_default_options();
             }

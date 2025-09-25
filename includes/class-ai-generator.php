@@ -30,11 +30,33 @@ class AI_Community_AI_Generator {
      * Constructor
      */
     public function __construct() {
-        $this->settings = new AI_Community_Settings();
-        $this->database = new AI_Community_Database();
-        $this->openrouter = new AI_Community_OpenRouter_API();
+        // Initialize properties as null
+        $this->settings = null;
+        $this->database = null;
+        $this->openrouter = null;
         
         add_action('init', array($this, 'init'));
+    }
+
+    private function get_settings() {
+        if (!$this->settings) {
+            $this->settings = new AI_Community_Settings();
+        }
+        return $this->settings;
+    }
+
+    private function get_database() {
+        if (!$this->database) {
+            $this->database = new AI_Community_Database();
+        }
+        return $this->database;
+    }
+
+    private function get_openrouter() {
+        if (!$this->openrouter) {
+            $this->openrouter = new AI_Community_OpenRouter_API();
+        }
+        return $this->openrouter;
     }
     
     /**
@@ -53,7 +75,7 @@ class AI_Community_AI_Generator {
      * Scheduled content generation (called by cron)
      */
     public function scheduled_generation() {
-        if (!$this->settings->get('ai_generation_enabled')) {
+        if (!$this->get_settings()->get('ai_generation_enabled')) {
             return;
         }
         
@@ -76,7 +98,7 @@ class AI_Community_AI_Generator {
      * Manual content generation (admin triggered)
      */
     public function generate_content_manually() {
-        if (!$this->settings->get('ai_generation_enabled')) {
+        if (!$this->get_settings()->get('ai_generation_enabled')) {
             return new WP_Error('disabled', __('AI content generation is disabled', 'ai-community'));
         }
         
@@ -134,7 +156,7 @@ class AI_Community_AI_Generator {
      * Fetch content from source websites
      */
     private function fetch_source_content() {
-        $websites = $this->settings->get('source_websites', array());
+        $websites = $this->get_settings()->get('source_websites', array());
         $content = array();
         
         foreach ($websites as $website) {
@@ -350,21 +372,21 @@ class AI_Community_AI_Generator {
             'tags' => $post_data['tags'],
             'status' => 'published',
             'is_ai_generated' => 1,
-            'ai_model' => $this->settings->get('ai_model'),
+            'ai_model' => $this->get_settings()->get('ai_model'),
             'meta_data' => array(
                 'generation_time' => current_time('mysql'),
                 'source_count' => count($this->fetch_source_content())
             )
         );
         
-        return $this->database->create_post($data);
+        return $this->get_database()->create_post($data);
     }
     
     /**
      * Generate replies for recent posts
      */
     private function generate_replies_for_recent_posts() {
-        $replies_per_post = $this->settings->get('replies_per_post', 3);
+        $replies_per_post = $this->get_settings()->get('replies_per_post', 3);
         
         if ($replies_per_post <= 0) {
             return 0;
@@ -419,7 +441,7 @@ class AI_Community_AI_Generator {
      */
     private function create_ai_reply($post_id, $reply_data) {
         global $wpdb;
-        $tables = $this->database->get_table_names();
+        $tables = $this->get_database()->get_table_names();
         
         $ai_user_id = $this->get_ai_bot_user();
         
@@ -430,7 +452,7 @@ class AI_Community_AI_Generator {
             'status' => 'approved',
             'votes' => rand(1, 3), // Random initial votes
             'is_ai_generated' => 1,
-            'ai_model' => $this->settings->get('ai_model'),
+            'ai_model' => $this->get_settings()->get('ai_model'),
             'author_name' => 'AI Assistant',
             'author_email' => 'ai@' . parse_url(get_site_url(), PHP_URL_HOST),
             'author_ip' => '127.0.0.1',
@@ -492,7 +514,7 @@ class AI_Community_AI_Generator {
      */
     private function get_posts_needing_replies() {
         global $wpdb;
-        $tables = $this->database->get_table_names();
+        $tables = $this->get_database()->get_table_names();
         
         // Get recent posts with low comment counts
         return $wpdb->get_results($wpdb->prepare(
@@ -511,7 +533,7 @@ class AI_Community_AI_Generator {
      * Calculate how many posts to create
      */
     private function calculate_posts_to_create() {
-        $posts_per_day = $this->settings->get('posts_per_day', 5);
+        $posts_per_day = $this->get_settings()->get('posts_per_day', 5);
         $max_per_run = ceil($posts_per_day / 4); // Assuming 4 runs per day
         
         // Check how many posts were created today
@@ -528,7 +550,7 @@ class AI_Community_AI_Generator {
      */
     private function get_ai_posts_count_today() {
         global $wpdb;
-        $tables = $this->database->get_table_names();
+        $tables = $this->get_database()->get_table_names();
         
         return (int) $wpdb->get_var(
             "SELECT COUNT(*) FROM {$tables['posts']} 
@@ -541,7 +563,7 @@ class AI_Community_AI_Generator {
      * Check if we should generate content now
      */
     private function should_generate_now() {
-        $schedule = $this->settings->get('ai_generation_schedule', 'hourly');
+        $schedule = $this->get_settings()->get('ai_generation_schedule', 'hourly');
         $last_run = get_option('ai_community_last_generation_run', 0);
         $current_time = current_time('timestamp');
         
@@ -562,7 +584,7 @@ class AI_Community_AI_Generator {
      */
     private function validate_community($community_slug) {
         global $wpdb;
-        $tables = $this->database->get_table_names();
+        $tables = $this->get_database()->get_table_names();
         
         $exists = $wpdb->get_var($wpdb->prepare(
             "SELECT COUNT(*) FROM {$tables['communities']} WHERE slug = %s",
@@ -627,7 +649,7 @@ class AI_Community_AI_Generator {
      * Log generation attempt
      */
     private function log_generation_attempt($type) {
-        if ($this->settings->get('debug_mode')) {
+        if ($this->get_settings()->get('debug_mode')) {
             error_log("AI Community: Starting {$type} content generation");
         }
         
@@ -638,7 +660,7 @@ class AI_Community_AI_Generator {
      * Log generation result
      */
     private function log_generation_result($type, $result) {
-        if ($this->settings->get('debug_mode')) {
+        if ($this->get_settings()->get('debug_mode')) {
             error_log("AI Community: {$type} generation completed - Posts: {$result['posts_created']}, Replies: {$result['replies_created']}");
         }
         
@@ -797,14 +819,14 @@ class AI_Community_AI_Generator {
      */
     public function cleanup_old_content($days = null) {
         if (!$days) {
-            $days = $this->settings->get('cleanup_old_posts_days', 365);
+            $days = $this->get_settings()->get('cleanup_old_posts_days', 365);
         }
         
         if ($days <= 0) {
             return 0;
         }
         
-        return $this->database->cleanup_old_posts($days);
+        return $this->get_database()->cleanup_old_posts($days);
     }
     
     /**
@@ -812,7 +834,7 @@ class AI_Community_AI_Generator {
      */
     public function get_quality_report($days = 7) {
         global $wpdb;
-        $tables = $this->database->get_table_names();
+        $tables = $this->get_database()->get_table_names();
         
         // Get AI posts from last N days
         $ai_posts = $wpdb->get_results($wpdb->prepare(
@@ -857,7 +879,7 @@ class AI_Community_AI_Generator {
      * Schedule next generation run
      */
     public function schedule_next_run() {
-        $schedule = $this->settings->get('ai_generation_schedule', 'hourly');
+        $schedule = $this->get_settings()->get('ai_generation_schedule', 'hourly');
         
         if ($schedule === 'manual') {
             return; // Don't schedule automatic runs
@@ -884,7 +906,7 @@ class AI_Community_AI_Generator {
         $checks = array();
         
         // API key check
-        $api_key = $this->settings->get('openrouter_api_key');
+        $api_key = $this->get_settings()->get('openrouter_api_key');
         $checks['api_key'] = array(
             'status' => !empty($api_key),
             'message' => empty($api_key) ? 
@@ -893,7 +915,7 @@ class AI_Community_AI_Generator {
         );
         
         // Source websites check
-        $websites = $this->settings->get('source_websites', array());
+        $websites = $this->get_settings()->get('source_websites', array());
         $checks['source_websites'] = array(
             'status' => !empty($websites),
             'message' => empty($websites) ? 
@@ -939,12 +961,12 @@ class AI_Community_AI_Generator {
             'quality_report' => $this->get_quality_report(7),
             'system_check' => $this->check_system_requirements(),
             'settings' => array(
-                'enabled' => $this->settings->get('ai_generation_enabled'),
-                'posts_per_day' => $this->settings->get('posts_per_day'),
-                'replies_per_post' => $this->settings->get('replies_per_post'),
-                'schedule' => $this->settings->get('ai_generation_schedule'),
-                'model' => $this->settings->get('ai_model'),
-                'source_websites' => $this->settings->get('source_websites')
+                'enabled' => $this->get_settings()->get('ai_generation_enabled'),
+                'posts_per_day' => $this->get_settings()->get('posts_per_day'),
+                'replies_per_post' => $this->get_settings()->get('replies_per_post'),
+                'schedule' => $this->get_settings()->get('ai_generation_schedule'),
+                'model' => $this->get_settings()->get('ai_model'),
+                'source_websites' => $this->get_settings()->get('source_websites')
             ),
             'export_time' => current_time('mysql'),
             'plugin_version' => AI_COMMUNITY_VERSION

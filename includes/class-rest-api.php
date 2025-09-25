@@ -30,10 +30,24 @@ class AI_Community_REST_API {
      * Constructor
      */
     public function __construct() {
-        $this->database = new AI_Community_Database();
-        $this->settings = new AI_Community_Settings();
+        $this->database = null;
+        $this->settings = null;
         
         add_action('rest_api_init', array($this, 'register_routes'));
+    }
+
+    private function get_database() {
+        if (!$this->database) {
+            $this->database = new AI_Community_Database();
+        }
+        return $this->database;
+    }
+
+    private function get_settings() {
+        if (!$this->settings) {
+            $this->settings = new AI_Community_Settings();
+        }
+        return $this->settings;
     }
     
     /**
@@ -212,8 +226,8 @@ class AI_Community_REST_API {
             'is_ai_generated' => $request->get_param('ai_generated')
         );
         
-        $posts = $this->database->get_posts($params);
-        $total = $this->database->get_posts_count($params);
+        $posts = $this->get_database()->get_posts($params);
+        $total = $this->get_database()->get_posts_count($params);
         
         // Add user vote information if logged in
         if (is_user_logged_in()) {
@@ -232,7 +246,7 @@ class AI_Community_REST_API {
      */
     public function get_post($request) {
         $post_id = $request->get_param('id');
-        $post = $this->database->get_post($post_id);
+        $post = $this->get_database()->get_post($post_id);
         
         if (!$post) {
             return new WP_Error('post_not_found', __('Post not found', 'ai-community'), array('status' => 404));
@@ -263,18 +277,18 @@ class AI_Community_REST_API {
             'community' => $request->get_param('community') ?: 'general',
             'tags' => $request->get_param('tags'),
             'author_id' => get_current_user_id(),
-            'status' => $this->settings->get('require_moderation') ? 'pending' : 'published'
+            'status' => $this->get_settings()->get('require_moderation') ? 'pending' : 'published'
         );
         
         // Moderate content if enabled
-        if ($this->settings->get('ai_moderation_enabled')) {
+        if ($this->get_settings()->get('ai_moderation_enabled')) {
             $moderation = $this->moderate_post_content($data['content']);
             if (!$moderation['appropriate']) {
                 return new WP_Error('content_rejected', $moderation['reason'], array('status' => 400));
             }
         }
         
-        $post_id = $this->database->create_post($data);
+        $post_id = $this->get_database()->create_post($data);
         
         if (!$post_id) {
             return new WP_Error('create_failed', __('Failed to create post', 'ai-community'), array('status' => 500));
@@ -297,7 +311,7 @@ class AI_Community_REST_API {
      */
     public function update_post($request) {
         $post_id = $request->get_param('id');
-        $post = $this->database->get_post($post_id);
+        $post = $this->get_database()->get_post($post_id);
         
         if (!$post) {
             return new WP_Error('post_not_found', __('Post not found', 'ai-community'), array('status' => 404));
@@ -314,7 +328,7 @@ class AI_Community_REST_API {
             $data['tags'] = $request->get_param('tags');
         }
         
-        $result = $this->database->update_post($post_id, $data);
+        $result = $this->get_database()->update_post($post_id, $data);
         
         if (!$result) {
             return new WP_Error('update_failed', __('Failed to update post', 'ai-community'), array('status' => 500));
@@ -330,7 +344,7 @@ class AI_Community_REST_API {
      */
     public function delete_post($request) {
         $post_id = $request->get_param('id');
-        $result = $this->database->delete_post($post_id);
+        $result = $this->get_database()->delete_post($post_id);
         
         if (!$result) {
             return new WP_Error('delete_failed', __('Failed to delete post', 'ai-community'), array('status' => 500));
@@ -383,7 +397,7 @@ class AI_Community_REST_API {
         $content = $request->get_param('content');
         $parent_id = $request->get_param('parent_id') ?: 0;
         
-        if (!$this->database->get_post($post_id)) {
+        if (!$this->get_database()->get_post($post_id)) {
             return new WP_Error('post_not_found', __('Post not found', 'ai-community'), array('status' => 404));
         }
         
@@ -434,7 +448,7 @@ class AI_Community_REST_API {
      */
     public function get_communities($request) {
         global $wpdb;
-        $tables = $this->database->get_table_names();
+        $tables = $this->get_database()->get_table_names();
         
         $communities = $wpdb->get_results(
             "SELECT * FROM {$tables['communities']} 
@@ -450,7 +464,7 @@ class AI_Community_REST_API {
      */
     public function get_community($request) {
         global $wpdb;
-        $tables = $this->database->get_table_names();
+        $tables = $this->get_database()->get_table_names();
         $slug = $request->get_param('slug');
         
         $community = $wpdb->get_row($wpdb->prepare(
@@ -518,7 +532,7 @@ class AI_Community_REST_API {
         $results = array();
         
         if (in_array($type, array('posts', 'all'))) {
-            $posts = $this->database->get_posts(array(
+            $posts = $this->get_database()->get_posts(array(
                 'search' => $query,
                 'per_page' => 10
             ));
@@ -566,7 +580,7 @@ class AI_Community_REST_API {
      * Get stats (admin only)
      */
     public function get_stats($request) {
-        $stats = $this->database->get_stats();
+        $stats = $this->get_database()->get_stats();
         
         // Add AI-specific stats
         $openrouter = new AI_Community_OpenRouter_API();
@@ -598,7 +612,7 @@ class AI_Community_REST_API {
         }
         
         $post_id = $request->get_param('id');
-        $post = $this->database->get_post($post_id);
+        $post = $this->get_database()->get_post($post_id);
         
         if (!$post) {
             return false;
@@ -613,7 +627,7 @@ class AI_Community_REST_API {
         }
         
         $post_id = $request->get_param('id');
-        $post = $this->database->get_post($post_id);
+        $post = $this->get_database()->get_post($post_id);
         
         if (!$post) {
             return false;
@@ -715,7 +729,7 @@ class AI_Community_REST_API {
         }
         
         global $wpdb;
-        $tables = $this->database->get_table_names();
+        $tables = $this->get_database()->get_table_names();
         $post_ids = array_column($posts, 'id');
         $placeholders = implode(',', array_fill(0, count($post_ids), '%d'));
         
@@ -734,7 +748,7 @@ class AI_Community_REST_API {
     
     private function get_user_vote($post_id, $user_id, $comment_id = null) {
         global $wpdb;
-        $tables = $this->database->get_table_names();
+        $tables = $this->get_database()->get_table_names();
         
         $where_post = $comment_id ? 'comment_id = %d' : 'post_id = %d';
         $id_value = $comment_id ?: $post_id;
@@ -748,7 +762,7 @@ class AI_Community_REST_API {
     
     private function increment_post_views($post_id) {
         global $wpdb;
-        $tables = $this->database->get_table_names();
+        $tables = $this->get_database()->get_table_names();
         
         $wpdb->query($wpdb->prepare(
             "UPDATE {$tables['posts']} SET view_count = view_count + 1 WHERE id = %d",
@@ -757,22 +771,22 @@ class AI_Community_REST_API {
     }
     
     private function can_user_post() {
-        if (!$this->settings->get('karma_system_enabled')) {
+        if (!$this->get_settings()->get('karma_system_enabled')) {
             return true;
         }
         
-        $min_karma = $this->settings->get('min_karma_to_post', 0);
+        $min_karma = $this->get_settings()->get('min_karma_to_post', 0);
         $user_karma = $this->get_user_karma(get_current_user_id());
         
         return $user_karma >= $min_karma;
     }
     
     private function can_user_vote() {
-        if (!$this->settings->get('karma_system_enabled')) {
+        if (!$this->get_settings()->get('karma_system_enabled')) {
             return true;
         }
         
-        $min_karma = $this->settings->get('min_karma_to_vote', 0);
+        $min_karma = $this->get_settings()->get('min_karma_to_vote', 0);
         $user_karma = $this->get_user_karma(get_current_user_id());
         
         return $user_karma >= $min_karma;
@@ -780,7 +794,7 @@ class AI_Community_REST_API {
     
     private function process_vote($post_id, $comment_id, $user_id, $vote_type) {
         global $wpdb;
-        $tables = $this->database->get_table_names();
+        $tables = $this->get_database()->get_table_names();
         
         $existing_vote = $wpdb->get_row($wpdb->prepare(
             "SELECT * FROM {$tables['votes']} 
@@ -832,11 +846,11 @@ class AI_Community_REST_API {
         
         // Update karma for post/comment author
         if ($post_id) {
-            $post = $this->database->get_post($post_id);
+            $post = $this->get_database()->get_post($post_id);
             if ($post) {
                 $karma_change = ($vote_type === 'up') ? 
-                    $this->settings->get('karma_for_upvote', 1) : 
-                    $this->settings->get('karma_for_downvote', -1);
+                    $this->get_settings()->get('karma_for_upvote', 1) : 
+                    $this->get_settings()->get('karma_for_downvote', -1);
                 $this->update_user_karma($post->author_id, 'vote_received', $karma_change);
             }
         }
@@ -851,7 +865,7 @@ class AI_Community_REST_API {
     
     private function get_post_comments($post_id) {
         global $wpdb;
-        $tables = $this->database->get_table_names();
+        $tables = $this->get_database()->get_table_names();
         
         $comments = $wpdb->get_results($wpdb->prepare(
             "SELECT c.*, u.display_name as author_name, u.user_login as author_username
@@ -897,14 +911,14 @@ class AI_Community_REST_API {
     
     private function create_comment_record($data) {
         global $wpdb;
-        $tables = $this->database->get_table_names();
+        $tables = $this->get_database()->get_table_names();
         
         $result = $wpdb->insert($tables['comments'], array(
             'post_id' => $data['post_id'],
             'parent_id' => $data['parent_id'],
             'content' => $data['content'],
             'author_id' => $data['author_id'],
-            'status' => $this->settings->get('require_moderation') ? 'pending' : 'approved',
+            'status' => $this->get_settings()->get('require_moderation') ? 'pending' : 'approved',
             'votes' => 1,
             'author_name' => wp_get_current_user()->display_name,
             'author_email' => wp_get_current_user()->user_email,
@@ -932,13 +946,13 @@ class AI_Community_REST_API {
     }
     
     private function update_user_karma($user_id, $action, $custom_amount = null) {
-        if (!$this->settings->get('karma_system_enabled')) {
+        if (!$this->get_settings()->get('karma_system_enabled')) {
             return;
         }
         
         $karma_changes = array(
-            'post_created' => $this->settings->get('karma_for_post', 2),
-            'comment_created' => $this->settings->get('karma_for_comment', 1),
+            'post_created' => $this->get_settings()->get('karma_for_post', 2),
+            'comment_created' => $this->get_settings()->get('karma_for_comment', 1),
             'vote_received' => $custom_amount ?? 0
         );
         
@@ -949,7 +963,7 @@ class AI_Community_REST_API {
         }
         
         global $wpdb;
-        $tables = $this->database->get_table_names();
+        $tables = $this->get_database()->get_table_names();
         
         // Upsert user meta
         $existing = $wpdb->get_var($wpdb->prepare(
@@ -975,7 +989,7 @@ class AI_Community_REST_API {
     
     private function get_user_karma($user_id) {
         global $wpdb;
-        $tables = $this->database->get_table_names();
+        $tables = $this->get_database()->get_table_names();
         
         return (int) $wpdb->get_var($wpdb->prepare(
             "SELECT karma FROM {$tables['user_meta']} WHERE user_id = %d",
@@ -985,7 +999,7 @@ class AI_Community_REST_API {
     
     private function get_user_post_count($user_id) {
         global $wpdb;
-        $tables = $this->database->get_table_names();
+        $tables = $this->get_database()->get_table_names();
         
         return (int) $wpdb->get_var($wpdb->prepare(
             "SELECT COUNT(*) FROM {$tables['posts']} 
@@ -996,7 +1010,7 @@ class AI_Community_REST_API {
     
     private function get_user_comment_count($user_id) {
         global $wpdb;
-        $tables = $this->database->get_table_names();
+        $tables = $this->get_database()->get_table_names();
         
         return (int) $wpdb->get_var($wpdb->prepare(
             "SELECT COUNT(*) FROM {$tables['comments']} 
@@ -1078,7 +1092,7 @@ class AI_Community_REST_API {
     }
     
     private function get_user_rate_limit_info($user_id) {
-        $limit = $this->settings->get('max_posts_per_hour', 10);
+        $limit = $this->get_settings()->get('max_posts_per_hour', 10);
         $current_hour = date('Y-m-d H:00:00');
         $key = "ai_community_user_rate_{$user_id}_{$current_hour}";
         $current_count = (int) get_transient($key);
@@ -1094,7 +1108,7 @@ class AI_Community_REST_API {
      * Log API requests for analytics
      */
     public function log_api_request($response, $handler, $request) {
-        if (!$this->settings->get('log_api_requests')) {
+        if (!$this->get_settings()->get('log_api_requests')) {
             return $response;
         }
         
@@ -1138,7 +1152,7 @@ class AI_Community_REST_API {
         // Content length limits
         if ($method === 'POST' && strpos($route, '/posts') !== false) {
             $content = $request->get_param('content');
-            $max_length = $this->settings->get('max_post_length', 10000);
+            $max_length = $this->get_settings()->get('max_post_length', 10000);
             
             if (strlen($content) > $max_length) {
                 return new WP_Error('content_too_long', 
@@ -1153,8 +1167,8 @@ class AI_Community_REST_API {
     
     private function check_user_rate_limit($user_id, $route) {
         $limits = array(
-            'posts' => $this->settings->get('max_posts_per_hour', 10),
-            'comments' => $this->settings->get('max_comments_per_hour', 50)
+            'posts' => $this->get_settings()->get('max_posts_per_hour', 10),
+            'comments' => $this->get_settings()->get('max_comments_per_hour', 50)
         );
         
         $limit_key = 'posts';

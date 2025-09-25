@@ -30,9 +30,10 @@ class AI_Community_Admin {
      * Constructor
      */
     public function __construct() {
-        $this->settings = new AI_Community_Settings();
-        $this->database = new AI_Community_Database();
-        $this->ai_generator = new AI_Community_AI_Generator();
+        // Initialize properties as null - use getter methods to instantiate when needed
+        $this->settings = null;
+        $this->database = null;
+        $this->ai_generator = null;
         
         add_action('admin_menu', array($this, 'add_admin_menu'));
         add_action('admin_init', array($this, 'admin_init'));
@@ -45,6 +46,27 @@ class AI_Community_Admin {
         add_action('wp_ajax_ai_community_save_settings', array($this, 'ajax_save_settings'));
         add_action('wp_ajax_ai_community_clear_logs', array($this, 'ajax_clear_logs'));
         add_action('wp_ajax_ai_community_export_data', array($this, 'ajax_export_data'));
+    }
+
+    private function get_settings() {
+        if (!$this->settings) {
+            $this->settings = new AI_Community_Settings();
+        }
+        return $this->settings;
+    }
+
+    private function get_database() {
+        if (!$this->database) {
+            $this->database = new AI_Community_Database();
+        }
+        return $this->database;
+    }
+
+    private function get_ai_generator() {
+        if (!$this->ai_generator) {
+            $this->ai_generator = new AI_Community_AI_Generator();
+        }
+        return $this->ai_generator;
     }
     
     /**
@@ -195,11 +217,11 @@ class AI_Community_Admin {
      * Dashboard page
      */
     public function dashboard_page() {
-        $stats = $this->database->get_stats();
-        $ai_stats = $this->ai_generator->get_generation_stats(30);
+        $stats = $this->get_database()->get_stats();
+        $ai_stats = $this->get_ai_generator()->get_generation_stats(30);
         $openrouter = new AI_Community_OpenRouter_API();
         $api_health = $openrouter->get_api_health();
-        $system_check = $this->ai_generator->check_system_requirements();
+        $system_check = $this->get_ai_generator()->check_system_requirements();
         
         include AI_COMMUNITY_PLUGIN_DIR . 'admin/pages/dashboard.php';
     }
@@ -226,8 +248,8 @@ class AI_Community_Admin {
                 break;
         }
         
-        $posts = $this->database->get_posts($filters);
-        $total_posts = $this->database->get_posts_count($filters);
+        $posts = $this->get_database()->get_posts($filters);
+        $total_posts = $this->get_database()->get_posts_count($filters);
         
         include AI_COMMUNITY_PLUGIN_DIR . 'admin/pages/posts.php';
     }
@@ -237,7 +259,7 @@ class AI_Community_Admin {
      */
     public function communities_page() {
         global $wpdb;
-        $tables = $this->database->get_table_names();
+        $tables = $this->get_database()->get_table_names();
         
         $communities = $wpdb->get_results(
             "SELECT c.*, 
@@ -254,7 +276,7 @@ class AI_Community_Admin {
      */
     public function settings_page() {
         $current_tab = $_GET['tab'] ?? 'general';
-        $settings = $this->settings->get_settings_by_category();
+        $settings = $this->get_settings()->get_settings_by_category();
         
         include AI_COMMUNITY_PLUGIN_DIR . 'admin/pages/settings.php';
     }
@@ -263,9 +285,9 @@ class AI_Community_Admin {
      * Analytics page
      */
     public function analytics_page() {
-        $stats = $this->database->get_stats();
-        $generation_stats = $this->ai_generator->get_generation_stats(30);
-        $quality_report = $this->ai_generator->get_quality_report(7);
+        $stats = $this->get_database()->get_stats();
+        $generation_stats = $this->get_ai_generator()->get_generation_stats(30);
+        $quality_report = $this->get_ai_generator()->get_quality_report(7);
         
         $openrouter = new AI_Community_OpenRouter_API();
         $usage_stats = $openrouter->get_usage_stats(30);
@@ -279,7 +301,7 @@ class AI_Community_Admin {
      */
     public function tools_page() {
         $current_tool = $_GET['tool'] ?? 'export';
-        $logs = $this->ai_generator->get_generation_logs(50);
+        $logs = $this->get_ai_generator()->get_generation_logs(50);
         $openrouter = new AI_Community_OpenRouter_API();
         $api_errors = $openrouter->get_recent_errors(20);
         
@@ -323,11 +345,11 @@ class AI_Community_Admin {
         $new_settings = $_POST['ai_community_settings'] ?? array();
         
         // Sanitize and validate settings
-        $result = $this->settings->update_all($new_settings);
+        $result = $this->get_settings()->update_all($new_settings);
         
         if ($result) {
             // Reschedule AI generation if schedule changed
-            $this->ai_generator->schedule_next_run();
+            $this->get_ai_generator()->schedule_next_run();
             
             add_settings_error(
                 'ai_community_settings',
@@ -350,7 +372,7 @@ class AI_Community_Admin {
      */
     private function handle_add_community() {
         global $wpdb;
-        $tables = $this->database->get_table_names();
+        $tables = $this->get_database()->get_table_names();
         
         $name = sanitize_text_field($_POST['community_name']);
         $slug = sanitize_title($_POST['community_slug'] ?: $name);
@@ -403,7 +425,7 @@ class AI_Community_Admin {
      */
     private function handle_delete_community() {
         global $wpdb;
-        $tables = $this->database->get_table_names();
+        $tables = $this->get_database()->get_table_names();
         
         $community_id = intval($_POST['community_id']);
         
@@ -484,7 +506,7 @@ class AI_Community_Admin {
         switch ($action) {
             case 'delete':
                 foreach ($post_ids as $post_id) {
-                    if ($this->database->delete_post($post_id)) {
+                    if ($this->get_database()->delete_post($post_id)) {
                         $count++;
                     }
                 }
@@ -498,7 +520,7 @@ class AI_Community_Admin {
                 
             case 'approve':
                 global $wpdb;
-                $tables = $this->database->get_table_names();
+                $tables = $this->get_database()->get_table_names();
                 $placeholders = implode(',', array_fill(0, count($post_ids), '%d'));
                 
                 $count = $wpdb->query($wpdb->prepare(
@@ -536,7 +558,7 @@ class AI_Community_Admin {
         }
         
         // Check for missing API key
-        if (empty($this->settings->get('openrouter_api_key'))) {
+        if (empty($this->get_settings()->get('openrouter_api_key'))) {
             ?>
             <div class="notice notice-warning">
                 <p>
@@ -550,7 +572,7 @@ class AI_Community_Admin {
         }
         
         // Check system requirements
-        $system_check = $this->ai_generator->check_system_requirements();
+        $system_check = $this->get_ai_generator()->check_system_requirements();
         if (!$system_check['overall_status']) {
             ?>
             <div class="notice notice-error">
@@ -580,7 +602,7 @@ class AI_Community_Admin {
             wp_send_json_error(__('Unauthorized', 'ai-community'));
         }
         
-        $result = $this->ai_generator->generate_content_manually();
+        $result = $this->get_ai_generator()->generate_content_manually();
         
         if (is_wp_error($result)) {
             wp_send_json_error($result->get_error_message());
@@ -627,11 +649,11 @@ class AI_Community_Admin {
         }
         
         $settings = $_POST['settings'] ?? array();
-        $result = $this->settings->update_all($settings);
+        $result = $this->get_settings()->update_all($settings);
         
         if ($result) {
             // Reschedule if needed
-            $this->ai_generator->schedule_next_run();
+            $this->get_ai_generator()->schedule_next_run();
             wp_send_json_success(__('Settings saved successfully!', 'ai-community'));
         } else {
             wp_send_json_error(__('Failed to save settings', 'ai-community'));
@@ -687,10 +709,10 @@ class AI_Community_Admin {
         
         switch ($data_type) {
             case 'settings':
-                $data = $this->settings->export_settings();
+                $data = $this->get_settings()->export_settings();
                 break;
             case 'generation':
-                $data = $this->ai_generator->export_generation_data();
+                $data = $this->get_ai_generator()->export_generation_data();
                 break;
             case 'api':
                 $openrouter = new AI_Community_OpenRouter_API();
@@ -698,9 +720,9 @@ class AI_Community_Admin {
                 break;
             case 'all':
                 $data = array(
-                    'settings' => $this->settings->export_settings(),
-                    'generation' => $this->ai_generator->export_generation_data(),
-                    'database_stats' => $this->database->get_stats(),
+                    'settings' => $this->get_settings()->export_settings(),
+                    'generation' => $this->get_ai_generator()->export_generation_data(),
+                    'database_stats' => $this->get_database()->get_stats(),
                     'export_info' => array(
                         'plugin_version' => AI_COMMUNITY_VERSION,
                         'wordpress_version' => get_bloginfo('version'),
@@ -734,8 +756,8 @@ class AI_Community_Admin {
      * Get dashboard widget data
      */
     public function get_dashboard_data() {
-        $stats = $this->database->get_stats();
-        $generation_stats = $this->ai_generator->get_generation_stats(7);
+        $stats = $this->get_database()->get_stats();
+        $generation_stats = $this->get_ai_generator()->get_generation_stats(7);
         
         $openrouter = new AI_Community_OpenRouter_API();
         $api_health = $openrouter->get_api_health();
@@ -753,7 +775,7 @@ class AI_Community_Admin {
      * Get recent posts for dashboard
      */
     private function get_recent_posts($limit = 5) {
-        return $this->database->get_posts(array(
+        return $this->get_database()->get_posts(array(
             'per_page' => $limit,
             'sort' => 'created_at',
             'order' => 'DESC'
