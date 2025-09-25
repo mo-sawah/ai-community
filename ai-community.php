@@ -2,7 +2,7 @@
 /**
  * Plugin Name: AI Community Pro
  * Description: Advanced AI-powered community platform with intelligent content generation, moderation, and engagement features
- * Version: 2.0.0
+ * Version: 2.0.1
  * Author: AI Community Team
  * Author URI: https://aicommunity.pro
  * License: GPL v2 or later
@@ -20,12 +20,12 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('AI_COMMUNITY_VERSION', '2.0.0');
+define('AI_COMMUNITY_VERSION', '2.0.1');
 define('AI_COMMUNITY_PLUGIN_FILE', __FILE__);
 define('AI_COMMUNITY_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('AI_COMMUNITY_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('AI_COMMUNITY_PLUGIN_BASENAME', plugin_basename(__FILE__));
-define('AI_COMMUNITY_DB_VERSION', '2.0.0');
+define('AI_COMMUNITY_DB_VERSION', '2.0.1');
 
 // Minimum requirements
 define('AI_COMMUNITY_MIN_WP_VERSION', '6.0');
