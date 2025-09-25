@@ -2,7 +2,7 @@
 /**
  * Plugin Name: AI Community
  * Description: AI-powered community platform that generates engaging discussions based on website content using OpenRouter AI
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: Mohamed Sawah
  * Author URI: https://sawahsolutions.com
  * License: GPL v2 or later
@@ -20,7 +20,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('AI_COMMUNITY_VERSION', '1.0.0');
+define('AI_COMMUNITY_VERSION', '1.0.1');
 define('AI_COMMUNITY_PLUGIN_FILE', __FILE__);
 define('AI_COMMUNITY_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('AI_COMMUNITY_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -34,6 +34,7 @@ define('AI_COMMUNITY_MIN_PHP_VERSION', '7.4');
  * Main plugin initialization
  */
 class AI_Community_Plugin {
+    
     
     /**
      * Plugin instance
@@ -164,48 +165,44 @@ class AI_Community_Plugin {
         add_shortcode('ai_community', array($this, 'shortcode_handler'));
     }
     
-    /**
-     * Initialize components after WordPress is loaded
-     */
-    public function init_components() {
-        try {
-            // Initialize core components
-            if (class_exists('AI_Community_Database')) {
-                $this->database = new AI_Community_Database();
-            }
-            
-            if (class_exists('AI_Community_Settings')) {
-                $this->settings = new AI_Community_Settings();
-            }
-            
-            if (class_exists('AI_Community_OpenRouter_API')) {
-                $this->openrouter_api = new AI_Community_OpenRouter_API();
-            }
-            
-            if (class_exists('AI_Community_AI_Generator')) {
-                $this->ai_generator = new AI_Community_AI_Generator();
-            }
-            
-            if (class_exists('AI_Community_REST_API')) {
-                $this->rest_api = new AI_Community_REST_API();
-            }
-            
-            // Initialize admin (only in admin context)
-            if (is_admin() && class_exists('AI_Community_Admin')) {
-                $this->admin = new AI_Community_Admin();
-            }
-            
-            // Initialize frontend (only in frontend context)
-            if (!is_admin() && class_exists('AI_Community_Frontend')) {
-                $this->frontend = new AI_Community_Frontend();
-            }
-            
-        } catch (Exception $e) {
-            error_log('AI Community Plugin Error: ' . $e->getMessage());
-            add_action('admin_notices', function() use ($e) {
-                echo '<div class="notice notice-error"><p>AI Community Plugin Error: ' . esc_html($e->getMessage()) . '</p></div>';
-            });
+    private function init_components() {
+        // Define component dependencies
+        $components = array(
+            'database' => array('class' => 'AI_Community_Database', 'deps' => array()),
+            'settings' => array('class' => 'AI_Community_Settings', 'deps' => array()),
+            'openrouter_api' => array('class' => 'AI_Community_OpenRouter_API', 'deps' => array('settings')),
+            'ai_generator' => array('class' => 'AI_Community_AI_Generator', 'deps' => array('settings', 'database', 'openrouter_api')),
+            'rest_api' => array('class' => 'AI_Community_REST_API', 'deps' => array('database', 'settings')),
+        );
+        
+        // Add context-specific components
+        if (is_admin()) {
+            $components['admin'] = array('class' => 'AI_Community_Admin', 'deps' => array('database', 'settings'));
+        } else {
+            $components['frontend'] = array('class' => 'AI_Community_Frontend', 'deps' => array('settings'));
         }
+        
+        return $this->initialize_components($components);
+    }
+
+    private function initialize_components($components) {
+        $initialized = array();
+        $failed = array();
+        
+        foreach ($components as $name => $config) {
+            if ($this->initialize_component($name, $config, $initialized)) {
+                $initialized[] = $name;
+            } else {
+                $failed[] = $name;
+            }
+        }
+        
+        if (!empty($failed)) {
+            error_log('AI Community: Failed to initialize components: ' . implode(', ', $failed));
+            return false;
+        }
+        
+        return true;
     }
     
     /**
@@ -213,14 +210,39 @@ class AI_Community_Plugin {
      */
     public function activate() {
         try {
-            // Create database tables if database class exists
-            if ($this->database && method_exists($this->database, 'create_tables')) {
-                $this->database->create_tables();
+            // Check requirements first
+            if (!$this->check_requirements()) {
+                wp_die(
+                    'AI Community Plugin requirements not met. Please check PHP version (7.4+) and WordPress version (5.0+).',
+                    'Plugin Requirements Not Met',
+                    array('back_link' => true)
+                );
             }
-
-            if ($this->settings && method_exists($this->settings, 'set_default_options')) {
-                $this->settings->set_default_options();
+            
+            // Initialize components manually for activation since they're not loaded yet
+            if (!class_exists('AI_Community_Database')) {
+                wp_die(
+                    'AI Community Database class not found. Plugin files may be corrupted.',
+                    'Plugin Activation Error',
+                    array('back_link' => true)
+                );
             }
+            
+            if (!class_exists('AI_Community_Settings')) {
+                wp_die(
+                    'AI Community Settings class not found. Plugin files may be corrupted.',
+                    'Plugin Activation Error',
+                    array('back_link' => true)
+                );
+            }
+            
+            // Create database instance for activation
+            $database = new AI_Community_Database();
+            $database->create_tables();
+            
+            // Create settings instance for activation
+            $settings = new AI_Community_Settings();
+            $settings->set_default_options();
             
             // Schedule cron events
             $this->schedule_events();
@@ -228,20 +250,96 @@ class AI_Community_Plugin {
             // Flush rewrite rules
             flush_rewrite_rules();
             
-            // Set activation time
+            // Set activation metadata
             update_option('ai_community_activation_time', current_time('timestamp'));
             update_option('ai_community_version', AI_COMMUNITY_VERSION);
+            
+            // Create default communities
+            $this->create_default_communities($database);
+            
+            // Log successful activation
+            error_log('AI Community Plugin activated successfully');
             
         } catch (Exception $e) {
             error_log('AI Community Activation Error: ' . $e->getMessage());
             
+            // Clean up any partial installation
+            $this->cleanup_failed_activation();
+            
             // Show error to user
             wp_die(
-                'AI Community Plugin activation failed: ' . $e->getMessage(),
+                'AI Community Plugin activation failed: ' . $e->getMessage() . '<br><br>Please check your error logs for more details.',
                 'Plugin Activation Error',
                 array('back_link' => true)
             );
         }
+    }
+
+    /**
+     * Create default communities during activation
+     */
+    private function create_default_communities($database) {
+        global $wpdb;
+        $tables = $database->get_table_names();
+        
+        $default_communities = array(
+            array(
+                'name' => 'General',
+                'slug' => 'general',
+                'description' => 'General discussions and topics',
+                'color' => '#6366f1',
+                'created_by' => 1
+            ),
+            array(
+                'name' => 'Development',
+                'slug' => 'development',
+                'description' => 'Software development discussions',
+                'color' => '#10b981',
+                'created_by' => 1
+            ),
+            array(
+                'name' => 'AI & Machine Learning',
+                'slug' => 'ai',
+                'description' => 'Artificial Intelligence and ML topics',
+                'color' => '#8b5cf6',
+                'created_by' => 1
+            ),
+            array(
+                'name' => 'Announcements',
+                'slug' => 'announcements',
+                'description' => 'Important announcements and news',
+                'color' => '#f59e0b',
+                'created_by' => 1
+            )
+        );
+        
+        foreach ($default_communities as $community) {
+            // Check if community already exists
+            $exists = $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$tables['communities']} WHERE slug = %s",
+                $community['slug']
+            ));
+            
+            if (!$exists) {
+                $wpdb->insert($tables['communities'], $community);
+            }
+        }
+    }
+
+    /**
+     * Clean up after failed activation
+     */
+    private function cleanup_failed_activation() {
+        // Remove any options that were set
+        delete_option('ai_community_activation_time');
+        delete_option('ai_community_version');
+        
+        // Clear any scheduled events
+        wp_clear_scheduled_hook('ai_community_generate_content');
+        wp_clear_scheduled_hook('ai_community_cleanup_old_posts');
+        
+        // Note: We don't drop database tables in case there's existing data
+        error_log('AI Community: Cleaned up failed activation');
     }
     
     /**

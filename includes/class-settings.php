@@ -33,7 +33,7 @@ class AI_Community_Settings {
         'show_on_homepage' => false,
         
         // AI Generation Settings
-        'ai_generation_enabled' => true,
+        'ai_generation_enabled' => false,
         'posts_per_day' => 5,
         'replies_per_post' => 3,
         'openrouter_api_key' => '',
