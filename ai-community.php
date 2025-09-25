@@ -26,12 +26,12 @@ define('AI_COMMUNITY_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('AI_COMMUNITY_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('AI_COMMUNITY_PLUGIN_BASENAME', plugin_basename(__FILE__));
 
-// Minimum WordPress and PHP version requirements
+// Minimum requirements
 define('AI_COMMUNITY_MIN_WP_VERSION', '5.0');
 define('AI_COMMUNITY_MIN_PHP_VERSION', '7.4');
 
 /**
- * Main plugin class
+ * Main plugin initialization
  */
 class AI_Community_Plugin {
     
@@ -41,21 +41,15 @@ class AI_Community_Plugin {
     private static $instance = null;
     
     /**
-     * Plugin components
+     * Plugin components - initialized later to avoid circular dependencies
      */
     public $database;
-    public $rest_api;
-    public $ai_generator;
-    public $admin;
-    public $frontend;
-    public $shortcodes;
-    public $user_management;
-    public $communities;
-    public $posts;
-    public $comments;
-    public $voting;
     public $settings;
     public $openrouter_api;
+    public $ai_generator;
+    public $rest_api;
+    public $admin;
+    public $frontend;
     
     /**
      * Get plugin instance
@@ -71,8 +65,19 @@ class AI_Community_Plugin {
      * Constructor
      */
     private function __construct() {
-        $this->check_requirements();
-        $this->init();
+        // Check requirements first
+        if (!$this->check_requirements()) {
+            return;
+        }
+        
+        // Load dependencies
+        $this->load_dependencies();
+        
+        // Initialize hooks
+        $this->init_hooks();
+        
+        // Initialize components on WordPress init to avoid dependency issues
+        add_action('init', array($this, 'init_components'), 1);
     }
     
     /**
@@ -82,83 +87,61 @@ class AI_Community_Plugin {
         // Check WordPress version
         if (version_compare(get_bloginfo('version'), AI_COMMUNITY_MIN_WP_VERSION, '<')) {
             add_action('admin_notices', array($this, 'wp_version_notice'));
-            return;
+            return false;
         }
         
         // Check PHP version
         if (version_compare(PHP_VERSION, AI_COMMUNITY_MIN_PHP_VERSION, '<')) {
             add_action('admin_notices', array($this, 'php_version_notice'));
-            return;
+            return false;
         }
-    }
-    
-    /**
-     * Initialize plugin
-     */
-    private function init() {
-        // Load plugin files
-        $this->load_dependencies();
         
-        // Initialize components
-        $this->init_components();
-        
-        // Setup hooks
-        $this->setup_hooks();
-        
-        // Load textdomain
-        add_action('init', array($this, 'load_textdomain'));
+        return true;
     }
     
     /**
      * Load plugin dependencies
      */
     private function load_dependencies() {
-        // Core functions
-        require_once AI_COMMUNITY_PLUGIN_DIR . 'includes/functions.php';
+        // Helper functions first
+        $this->include_if_exists('includes/functions.php');
         
-        // Main classes
-        require_once AI_COMMUNITY_PLUGIN_DIR . 'includes/class-database.php';
-        require_once AI_COMMUNITY_PLUGIN_DIR . 'includes/class-settings.php';
-        require_once AI_COMMUNITY_PLUGIN_DIR . 'includes/class-openrouter-api.php';
-        require_once AI_COMMUNITY_PLUGIN_DIR . 'includes/class-ai-generator.php';
-        require_once AI_COMMUNITY_PLUGIN_DIR . 'includes/class-user-management.php';
-        require_once AI_COMMUNITY_PLUGIN_DIR . 'includes/class-communities.php';
-        require_once AI_COMMUNITY_PLUGIN_DIR . 'includes/class-posts.php';
-        require_once AI_COMMUNITY_PLUGIN_DIR . 'includes/class-comments.php';
-        require_once AI_COMMUNITY_PLUGIN_DIR . 'includes/class-voting.php';
-        require_once AI_COMMUNITY_PLUGIN_DIR . 'includes/class-rest-api.php';
-        require_once AI_COMMUNITY_PLUGIN_DIR . 'includes/class-shortcodes.php';
-        require_once AI_COMMUNITY_PLUGIN_DIR . 'includes/class-frontend.php';
-        require_once AI_COMMUNITY_PLUGIN_DIR . 'includes/class-admin.php';
-    }
-    
-    /**
-     * Initialize plugin components
-     */
-    private function init_components() {
-        $this->database = new AI_Community_Database();
-        $this->settings = new AI_Community_Settings();
-        $this->openrouter_api = new AI_Community_OpenRouter_API();
-        $this->ai_generator = new AI_Community_AI_Generator();
-        $this->user_management = new AI_Community_User_Management();
-        $this->communities = new AI_Community_Communities();
-        $this->posts = new AI_Community_Posts();
-        $this->comments = new AI_Community_Comments();
-        $this->voting = new AI_Community_Voting();
-        $this->rest_api = new AI_Community_REST_API();
-        $this->shortcodes = new AI_Community_Shortcodes();
-        $this->frontend = new AI_Community_Frontend();
+        // Core classes - order matters to avoid dependency issues
+        $this->include_if_exists('includes/class-database.php');
+        $this->include_if_exists('includes/class-settings.php');
+        $this->include_if_exists('includes/class-openrouter-api.php');
+        $this->include_if_exists('includes/class-ai-generator.php');
+        $this->include_if_exists('includes/class-rest-api.php');
         
-        // Initialize admin only in admin context
+        // Admin classes (only if in admin)
         if (is_admin()) {
-            $this->admin = new AI_Community_Admin();
+            $this->include_if_exists('includes/class-admin.php');
+        }
+        
+        // Frontend classes (only if not admin)
+        if (!is_admin()) {
+            $this->include_if_exists('includes/class-frontend.php');
         }
     }
     
     /**
-     * Setup plugin hooks
+     * Safely include file if it exists
      */
-    private function setup_hooks() {
+    private function include_if_exists($file) {
+        $path = AI_COMMUNITY_PLUGIN_DIR . $file;
+        if (file_exists($path)) {
+            require_once $path;
+            return true;
+        } else {
+            error_log("AI Community: Missing file - {$file}");
+            return false;
+        }
+    }
+    
+    /**
+     * Initialize hooks
+     */
+    private function init_hooks() {
         // Activation/Deactivation hooks
         register_activation_hook(AI_COMMUNITY_PLUGIN_FILE, array($this, 'activate'));
         register_deactivation_hook(AI_COMMUNITY_PLUGIN_FILE, array($this, 'deactivate'));
@@ -166,72 +149,100 @@ class AI_Community_Plugin {
         // Plugin action links
         add_filter('plugin_action_links_' . AI_COMMUNITY_PLUGIN_BASENAME, array($this, 'plugin_action_links'));
         
-        // Init hook for post-WordPress load tasks
-        add_action('init', array($this, 'init_after_wp_loaded'));
+        // Load textdomain
+        add_action('plugins_loaded', array($this, 'load_textdomain'));
         
-        // Enqueue scripts and styles
+        // Enqueue assets
         add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_assets'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
         
-        // AJAX handlers
-        add_action('wp_ajax_ai_community_action', array($this, 'handle_ajax'));
-        add_action('wp_ajax_nopriv_ai_community_action', array($this, 'handle_ajax'));
+        // Basic AJAX handler (more detailed ones in components)
+        add_action('wp_ajax_ai_community_basic', array($this, 'handle_basic_ajax'));
+        add_action('wp_ajax_nopriv_ai_community_basic', array($this, 'handle_basic_ajax'));
         
-        // Cron hooks
-        add_action('ai_community_generate_content', array($this->ai_generator, 'scheduled_generation'));
-        add_action('ai_community_cleanup_old_posts', array($this, 'cleanup_old_posts'));
+        // Shortcode
+        add_shortcode('ai_community', array($this, 'shortcode_handler'));
     }
     
     /**
-     * Load plugin textdomain
+     * Initialize components after WordPress is loaded
      */
-    public function load_textdomain() {
-        load_plugin_textdomain(
-            'ai-community',
-            false,
-            dirname(AI_COMMUNITY_PLUGIN_BASENAME) . '/languages'
-        );
-    }
-    
-    /**
-     * Initialize after WordPress is fully loaded
-     */
-    public function init_after_wp_loaded() {
-        // Schedule cron jobs if not already scheduled
-        $this->schedule_cron_jobs();
-        
-        // Handle plugin updates
-        $this->maybe_update_plugin();
-        
-        // Initialize user roles and capabilities
-        $this->setup_user_roles();
+    public function init_components() {
+        try {
+            // Initialize core components
+            if (class_exists('AI_Community_Database')) {
+                $this->database = new AI_Community_Database();
+            }
+            
+            if (class_exists('AI_Community_Settings')) {
+                $this->settings = new AI_Community_Settings();
+            }
+            
+            if (class_exists('AI_Community_OpenRouter_API')) {
+                $this->openrouter_api = new AI_Community_OpenRouter_API();
+            }
+            
+            if (class_exists('AI_Community_AI_Generator')) {
+                $this->ai_generator = new AI_Community_AI_Generator();
+            }
+            
+            if (class_exists('AI_Community_REST_API')) {
+                $this->rest_api = new AI_Community_REST_API();
+            }
+            
+            // Initialize admin (only in admin context)
+            if (is_admin() && class_exists('AI_Community_Admin')) {
+                $this->admin = new AI_Community_Admin();
+            }
+            
+            // Initialize frontend (only in frontend context)
+            if (!is_admin() && class_exists('AI_Community_Frontend')) {
+                $this->frontend = new AI_Community_Frontend();
+            }
+            
+        } catch (Exception $e) {
+            error_log('AI Community Plugin Error: ' . $e->getMessage());
+            add_action('admin_notices', function() use ($e) {
+                echo '<div class="notice notice-error"><p>AI Community Plugin Error: ' . esc_html($e->getMessage()) . '</p></div>';
+            });
+        }
     }
     
     /**
      * Plugin activation
      */
     public function activate() {
-        // Create database tables
-        $this->database->create_tables();
-        
-        // Set default options
-        $this->settings->set_default_options();
-        
-        // Create default communities
-        $this->communities->create_default_communities();
-        
-        // Schedule cron jobs
-        $this->schedule_cron_jobs();
-        
-        // Setup user roles
-        $this->setup_user_roles();
-        
-        // Flush rewrite rules
-        flush_rewrite_rules();
-        
-        // Set activation flag
-        update_option('ai_community_activation_time', current_time('timestamp'));
-        update_option('ai_community_version', AI_COMMUNITY_VERSION);
+        try {
+            // Create database tables if database class exists
+            if ($this->database && method_exists($this->database, 'create_tables')) {
+                $this->database->create_tables();
+            }
+            
+            // Set default settings if settings class exists
+            if ($this->settings && method_exists($this->settings, 'set_default_options')) {
+                $this->settings->set_default_options();
+            }
+            
+            // Schedule cron events
+            $this->schedule_events();
+            
+            // Flush rewrite rules
+            flush_rewrite_rules();
+            
+            // Set activation time
+            update_option('ai_community_activation_time', current_time('timestamp'));
+            update_option('ai_community_version', AI_COMMUNITY_VERSION);
+            
+        } catch (Exception $e) {
+            error_log('AI Community Activation Error: ' . $e->getMessage());
+            
+            // Show error to user
+            wp_die(
+                'AI Community Plugin activation failed: ' . $e->getMessage(),
+                'Plugin Activation Error',
+                array('back_link' => true)
+            );
+        }
     }
     
     /**
@@ -247,92 +258,35 @@ class AI_Community_Plugin {
     }
     
     /**
-     * Schedule cron jobs
+     * Schedule cron events
      */
-    private function schedule_cron_jobs() {
-        // Schedule AI content generation
+    private function schedule_events() {
+        // Only schedule if not already scheduled
         if (!wp_next_scheduled('ai_community_generate_content')) {
             wp_schedule_event(time(), 'hourly', 'ai_community_generate_content');
         }
         
-        // Schedule cleanup task
         if (!wp_next_scheduled('ai_community_cleanup_old_posts')) {
             wp_schedule_event(time(), 'daily', 'ai_community_cleanup_old_posts');
         }
     }
     
     /**
-     * Setup user roles and capabilities
+     * Load plugin textdomain
      */
-    private function setup_user_roles() {
-        $capabilities = array(
-            'read_ai_community_posts',
-            'create_ai_community_posts',
-            'edit_ai_community_posts',
-            'delete_ai_community_posts',
-            'moderate_ai_community',
-            'manage_ai_community_settings'
+    public function load_textdomain() {
+        load_plugin_textdomain(
+            'ai-community',
+            false,
+            dirname(AI_COMMUNITY_PLUGIN_BASENAME) . '/languages'
         );
-        
-        // Add capabilities to administrator
-        $admin_role = get_role('administrator');
-        if ($admin_role) {
-            foreach ($capabilities as $cap) {
-                $admin_role->add_cap($cap);
-            }
-        }
-        
-        // Add basic capabilities to subscribers
-        $subscriber_role = get_role('subscriber');
-        if ($subscriber_role) {
-            $subscriber_role->add_cap('read_ai_community_posts');
-            $subscriber_role->add_cap('create_ai_community_posts');
-        }
-    }
-    
-    /**
-     * Maybe update plugin
-     */
-    private function maybe_update_plugin() {
-        $installed_version = get_option('ai_community_version', '0.0.0');
-        
-        if (version_compare($installed_version, AI_COMMUNITY_VERSION, '<')) {
-            $this->update_plugin($installed_version);
-            update_option('ai_community_version', AI_COMMUNITY_VERSION);
-        }
-    }
-    
-    /**
-     * Update plugin
-     */
-    private function update_plugin($from_version) {
-        // Run update routines based on version
-        if (version_compare($from_version, '1.0.0', '<')) {
-            // Update to 1.0.0
-            $this->database->update_tables_to_v1();
-        }
-        
-        // Clear any caches
-        wp_cache_flush();
-    }
-    
-    /**
-     * Cleanup old posts
-     */
-    public function cleanup_old_posts() {
-        $settings = $this->settings->get_all();
-        $cleanup_days = isset($settings['cleanup_old_posts_days']) ? $settings['cleanup_old_posts_days'] : 365;
-        
-        if ($cleanup_days > 0) {
-            $this->posts->cleanup_old_posts($cleanup_days);
-        }
     }
     
     /**
      * Enqueue frontend assets
      */
     public function enqueue_frontend_assets() {
-        // Only enqueue on pages where the community is displayed
+        // Only enqueue if shortcode is present or on specific pages
         if (!$this->should_load_frontend_assets()) {
             return;
         }
@@ -354,26 +308,18 @@ class AI_Community_Plugin {
             true
         );
         
-        // React components (if needed)
-        if ($this->settings->get('enable_react_components', false)) {
-            wp_enqueue_script(
-                'ai-community-react',
-                AI_COMMUNITY_PLUGIN_URL . 'assets/js/react-components.js',
-                array('react', 'react-dom'),
-                AI_COMMUNITY_VERSION,
-                true
-            );
-        }
-        
-        // Localize script
+        // Localize script with safe data
         wp_localize_script('ai-community-frontend', 'aiCommunityData', array(
             'ajaxUrl' => admin_url('admin-ajax.php'),
             'restUrl' => rest_url('ai-community/v1/'),
             'nonce' => wp_create_nonce('ai_community_nonce'),
             'restNonce' => wp_create_nonce('wp_rest'),
-            'currentUser' => $this->get_current_user_data(),
-            'settings' => $this->get_frontend_settings(),
-            'translations' => $this->get_frontend_translations()
+            'currentUser' => $this->get_safe_current_user_data(),
+            'translations' => array(
+                'loading' => __('Loading...', 'ai-community'),
+                'error' => __('Error occurred', 'ai-community'),
+                'success' => __('Success!', 'ai-community')
+            )
         ));
     }
     
@@ -386,37 +332,45 @@ class AI_Community_Plugin {
             return;
         }
         
-        // CSS
-        wp_enqueue_style(
-            'ai-community-admin',
-            AI_COMMUNITY_PLUGIN_URL . 'assets/css/admin.css',
-            array('wp-color-picker'),
-            AI_COMMUNITY_VERSION
-        );
+        wp_enqueue_style('wp-color-picker');
+        wp_enqueue_script('wp-color-picker');
         
-        // JavaScript
-        wp_enqueue_script(
-            'ai-community-admin',
-            AI_COMMUNITY_PLUGIN_URL . 'assets/js/admin.js',
-            array('jquery', 'wp-color-picker', 'chart.js'),
-            AI_COMMUNITY_VERSION,
-            true
-        );
-        
-        // Chart.js for analytics
-        wp_enqueue_script(
-            'chart-js',
-            'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js',
-            array(),
-            '3.9.1',
-            true
-        );
-        
-        // Localize admin script
-        wp_localize_script('ai-community-admin', 'aiCommunityAdmin', array(
+        wp_localize_script('jquery', 'aiCommunityAdmin', array(
             'ajaxUrl' => admin_url('admin-ajax.php'),
-            'nonce' => wp_create_nonce('ai_community_admin_nonce'),
-            'translations' => $this->get_admin_translations()
+            'nonce' => wp_create_nonce('ai_community_admin_nonce')
+        ));
+    }
+    
+    /**
+     * Basic shortcode handler
+     */
+    public function shortcode_handler($atts) {
+        $atts = shortcode_atts(array(
+            'layout' => 'sidebar',
+            'posts_per_page' => 10
+        ), $atts);
+        
+        // Basic HTML structure that JavaScript will populate
+        ob_start();
+        ?>
+        <div id="ai-community-app" class="ai-community-container" data-layout="<?php echo esc_attr($atts['layout']); ?>">
+            <div class="ai-community-loading">
+                <p><?php _e('Loading AI Community...', 'ai-community'); ?></p>
+            </div>
+        </div>
+        <?php
+        return ob_get_clean();
+    }
+    
+    /**
+     * Basic AJAX handler
+     */
+    public function handle_basic_ajax() {
+        check_ajax_referer('ai_community_nonce', 'nonce');
+        
+        wp_send_json_success(array(
+            'message' => 'AI Community is working!',
+            'version' => AI_COMMUNITY_VERSION
         ));
     }
     
@@ -426,24 +380,23 @@ class AI_Community_Plugin {
     private function should_load_frontend_assets() {
         global $post;
         
-        // Always load on community pages
-        if (is_page() && $post && has_shortcode($post->post_content, 'ai_community')) {
+        // Check if shortcode is present
+        if (is_singular() && $post && has_shortcode($post->post_content, 'ai_community')) {
             return true;
         }
         
-        // Load if community is set as homepage
-        if (is_front_page() && $this->settings->get('show_on_homepage', false)) {
+        // Check specific pages/settings
+        if ($this->settings && $this->settings->get('show_on_homepage', false) && is_front_page()) {
             return true;
         }
         
-        // Allow themes/plugins to override
-        return apply_filters('ai_community_load_frontend_assets', false);
+        return false;
     }
     
     /**
-     * Get current user data for frontend
+     * Get safe current user data
      */
-    private function get_current_user_data() {
+    private function get_safe_current_user_data() {
         if (!is_user_logged_in()) {
             return null;
         }
@@ -453,86 +406,8 @@ class AI_Community_Plugin {
             'id' => $user->ID,
             'name' => $user->display_name,
             'username' => $user->user_login,
-            'email' => $user->user_email,
-            'karma' => $this->user_management->get_user_karma($user->ID),
-            'avatar' => get_avatar_url($user->ID, array('size' => 64)),
-            'capabilities' => $user->allcaps
+            'avatar' => get_avatar_url($user->ID, array('size' => 64))
         );
-    }
-    
-    /**
-     * Get frontend settings
-     */
-    private function get_frontend_settings() {
-        $settings = $this->settings->get_all();
-        
-        // Only return settings needed for frontend
-        return array(
-            'layout_type' => $settings['layout_type'],
-            'primary_color' => $settings['primary_color'],
-            'secondary_color' => $settings['secondary_color'],
-            'font_family' => $settings['font_family'],
-            'posts_per_page' => $settings['posts_per_page'],
-            'enable_voting' => $settings['enable_voting'],
-            'enable_comments' => $settings['enable_comments']
-        );
-    }
-    
-    /**
-     * Get frontend translations
-     */
-    private function get_frontend_translations() {
-        return array(
-            'loading' => __('Loading...', 'ai-community'),
-            'error' => __('Error occurred', 'ai-community'),
-            'success' => __('Success!', 'ai-community'),
-            'confirm_delete' => __('Are you sure you want to delete this?', 'ai-community'),
-            'vote_login_required' => __('Please login to vote', 'ai-community'),
-            'comment_login_required' => __('Please login to comment', 'ai-community')
-        );
-    }
-    
-    /**
-     * Get admin translations
-     */
-    private function get_admin_translations() {
-        return array(
-            'generating_content' => __('Generating AI content...', 'ai-community'),
-            'content_generated' => __('AI content generated successfully!', 'ai-community'),
-            'generation_failed' => __('Failed to generate content', 'ai-community'),
-            'settings_saved' => __('Settings saved successfully', 'ai-community'),
-            'confirm_delete' => __('Are you sure?', 'ai-community')
-        );
-    }
-    
-    /**
-     * Handle AJAX requests
-     */
-    public function handle_ajax() {
-        // Verify nonce
-        if (!wp_verify_nonce($_POST['nonce'] ?? '', 'ai_community_nonce')) {
-            wp_die('Security check failed');
-        }
-        
-        $action = sanitize_text_field($_POST['sub_action'] ?? '');
-        
-        // Route to appropriate handler
-        switch ($action) {
-            case 'get_posts':
-                $this->posts->ajax_get_posts();
-                break;
-            case 'create_post':
-                $this->posts->ajax_create_post();
-                break;
-            case 'vote_post':
-                $this->voting->ajax_vote_post();
-                break;
-            case 'add_comment':
-                $this->comments->ajax_add_comment();
-                break;
-            default:
-                wp_die('Invalid action');
-        }
     }
     
     /**
@@ -540,8 +415,8 @@ class AI_Community_Plugin {
      */
     public function plugin_action_links($links) {
         $plugin_links = array(
-            '<a href="' . admin_url('admin.php?page=ai-community-settings') . '">' . __('Settings', 'ai-community') . '</a>',
             '<a href="' . admin_url('admin.php?page=ai-community') . '">' . __('Dashboard', 'ai-community') . '</a>',
+            '<a href="' . admin_url('admin.php?page=ai-community-settings') . '">' . __('Settings', 'ai-community') . '</a>',
         );
         
         return array_merge($plugin_links, $links);
@@ -570,12 +445,35 @@ class AI_Community_Plugin {
         
         printf('<div class="notice notice-error"><p>%s</p></div>', esc_html($message));
     }
+    
+    /**
+     * Get component safely
+     */
+    public function get_component($name) {
+        return isset($this->$name) ? $this->$name : null;
+    }
 }
 
-// Initialize plugin
+/**
+ * Initialize plugin
+ */
 function ai_community_init() {
     return AI_Community_Plugin::get_instance();
 }
 
-// Start the plugin
-ai_community_init();
+// Start the plugin after all plugins are loaded
+add_action('plugins_loaded', 'ai_community_init', 10);
+
+/**
+ * Emergency error handler for debugging
+ */
+if (!function_exists('ai_community_handle_error')) {
+    function ai_community_handle_error($errno, $errstr, $errfile, $errline) {
+        if (strpos($errfile, 'ai-community') !== false) {
+            error_log("AI Community Error: [{$errno}] {$errstr} in {$errfile} on line {$errline}");
+        }
+        return false; // Don't prevent normal error handling
+    }
+    
+    set_error_handler('ai_community_handle_error');
+}

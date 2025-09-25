@@ -105,11 +105,12 @@ class AI_Community_Settings {
      * Constructor
      */
     public function __construct() {
-        add_action('init', array($this, 'init'));
+        // Don't initialize hooks in constructor to avoid circular dependencies
+        // They will be initialized by the main plugin class
     }
     
     /**
-     * Initialize settings
+     * Initialize settings (called by main plugin)
      */
     public function init() {
         add_action('admin_init', array($this, 'register_settings'));
