@@ -77,7 +77,7 @@ class AI_Community_Plugin {
         // Initialize hooks
         $this->init_hooks();
         
-        // Initialize components immediately, not on 'init' hook
+        // Initialize components directly (not via hook)
         $this->init_components();
     }
     

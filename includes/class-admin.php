@@ -46,6 +46,8 @@ class AI_Community_Admin {
         add_action('wp_ajax_ai_community_save_settings', array($this, 'ajax_save_settings'));
         add_action('wp_ajax_ai_community_clear_logs', array($this, 'ajax_clear_logs'));
         add_action('wp_ajax_ai_community_export_data', array($this, 'ajax_export_data'));
+        // Add this line in the constructor
+        add_filter('admin_body_class', array($this, 'admin_body_class'));
     }
 
     private function get_settings() {
@@ -962,6 +964,3 @@ class AI_Community_Admin {
         return $classes;
     }
 }
-
-// Initialize admin hooks
-add_filter('admin_body_class', array($this, 'admin_body_class'));
