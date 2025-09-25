@@ -2,7 +2,7 @@
 /**
  * Plugin Name: AI Community
  * Description: AI-powered community platform that generates engaging discussions based on website content using OpenRouter AI
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: Mohamed Sawah
  * Author URI: https://sawahsolutions.com
  * License: GPL v2 or later
@@ -20,7 +20,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('AI_COMMUNITY_VERSION', '1.0.1');
+define('AI_COMMUNITY_VERSION', '1.0.2');
 define('AI_COMMUNITY_PLUGIN_FILE', __FILE__);
 define('AI_COMMUNITY_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('AI_COMMUNITY_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -34,32 +34,6 @@ define('AI_COMMUNITY_MIN_PHP_VERSION', '7.4');
  * Main plugin initialization
  */
 class AI_Community_Plugin {
-
-    private function initialize_component($name, $config, &$initialized) {
-        $class_name = $config['class'];
-        
-        // Check if class exists
-        if (!class_exists($class_name)) {
-            error_log("AI Community: Class {$class_name} not found for component {$name}");
-            return false;
-        }
-        
-        // Check dependencies
-        foreach ($config['deps'] as $dep) {
-            if (!in_array($dep, $initialized)) {
-                error_log("AI Community: Dependency {$dep} not initialized for component {$name}");
-                return false;
-            }
-        }
-        
-        try {
-            $this->$name = new $class_name();
-            return true;
-        } catch (Exception $e) {
-            error_log("AI Community: Failed to initialize {$name}: " . $e->getMessage());
-            return false;
-        }
-    }
     
     
     /**
@@ -103,8 +77,8 @@ class AI_Community_Plugin {
         // Initialize hooks
         $this->init_hooks();
         
-        // Initialize components on WordPress init to avoid dependency issues
-        add_action('init', array($this, 'init_components'), 1);
+        // Initialize components immediately, not on 'init' hook
+        $this->init_components();
     }
     
     /**
@@ -191,29 +165,45 @@ class AI_Community_Plugin {
         add_shortcode('ai_community', array($this, 'shortcode_handler'));
     }
     
-    private function init_components() {
+    public function init_components() {
+        // Prevent multiple initialization
+        static $initialized = false;
+        if ($initialized) {
+            return true;
+        }
+        
         try {
-            // Initialize in dependency order
+            // Initialize core components first
             $this->database = new AI_Community_Database();
             $this->settings = new AI_Community_Settings();
+            
+            // Initialize API components
             $this->openrouter_api = new AI_Community_OpenRouter_API();
             $this->ai_generator = new AI_Community_AI_Generator();
             $this->rest_api = new AI_Community_REST_API();
             
-            // Context-specific components
+            // Initialize context-specific components
             if (is_admin()) {
-                $this->admin = new AI_Community_Admin();
+                if (class_exists('AI_Community_Admin')) {
+                    $this->admin = new AI_Community_Admin();
+                }
             } else {
-                $this->frontend = new AI_Community_Frontend();
+                if (class_exists('AI_Community_Frontend')) {
+                    $this->frontend = new AI_Community_Frontend();
+                }
             }
             
+            $initialized = true;
             return true;
             
         } catch (Exception $e) {
-            error_log('AI Community: Failed to initialize components - ' . $e->getMessage());
+            error_log('AI Community: Component initialization failed - ' . $e->getMessage());
+            
+            // Show admin notice
             add_action('admin_notices', function() use ($e) {
-                echo '<div class="notice notice-error"><p>AI Community Plugin Error: ' . esc_html($e->getMessage()) . '</p></div>';
+                echo '<div class="notice notice-error"><p><strong>AI Community Plugin Error:</strong> ' . esc_html($e->getMessage()) . '</p></div>';
             });
+            
             return false;
         }
     }
@@ -558,7 +548,10 @@ class AI_Community_Plugin {
      * Get component safely
      */
     public function get_component($name) {
-        return isset($this->$name) ? $this->$name : null;
+        if (property_exists($this, $name) && isset($this->$name)) {
+            return $this->$name;
+        }
+        return null;
     }
 }
 
