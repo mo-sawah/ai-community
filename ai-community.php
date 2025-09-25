@@ -34,6 +34,32 @@ define('AI_COMMUNITY_MIN_PHP_VERSION', '7.4');
  * Main plugin initialization
  */
 class AI_Community_Plugin {
+
+    private function initialize_component($name, $config, &$initialized) {
+        $class_name = $config['class'];
+        
+        // Check if class exists
+        if (!class_exists($class_name)) {
+            error_log("AI Community: Class {$class_name} not found for component {$name}");
+            return false;
+        }
+        
+        // Check dependencies
+        foreach ($config['deps'] as $dep) {
+            if (!in_array($dep, $initialized)) {
+                error_log("AI Community: Dependency {$dep} not initialized for component {$name}");
+                return false;
+            }
+        }
+        
+        try {
+            $this->$name = new $class_name();
+            return true;
+        } catch (Exception $e) {
+            error_log("AI Community: Failed to initialize {$name}: " . $e->getMessage());
+            return false;
+        }
+    }
     
     
     /**
